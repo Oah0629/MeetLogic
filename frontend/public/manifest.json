@@ -12,10 +12,10 @@
         "https://meet.google.com/*"
       ],
       "js": [
-        "src/content.js"
+        "content.js"
       ],
       "css": [
-        "src/content.css"
+        "content.css"
       ],
       "run_at": "document_idle"
     }
