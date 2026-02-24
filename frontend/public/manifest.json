@@ -1,0 +1,32 @@
+{
+  "manifest_version": 3,
+  "name": "MeetLogic AI MVP",
+  "version": "1.0.0",
+  "description": "AI-powered Meeting Governance & Analytics.",
+  "action": {
+    "default_popup": "index.html"
+  },
+  "content_scripts": [
+    {
+      "matches": [
+        "https://meet.google.com/*"
+      ],
+      "js": [
+        "src/content.js"
+      ],
+      "css": [
+        "src/content.css"
+      ],
+      "run_at": "document_idle"
+    }
+  ],
+  "permissions": [
+    "activeTab",
+    "storage",
+    "scripting"
+  ],
+  "host_permissions": [
+    "https://meet.google.com/*",
+    "http://localhost:8000/*"
+  ]
+}
