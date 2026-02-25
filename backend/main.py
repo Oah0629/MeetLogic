@@ -1,4 +1,4 @@
-from fastapi import FastAPI, WebSocket
+from fastapi import FastAPI, WebSocket, WebSocketDisconnect
 from contextlib import asynccontextmanager
 from database import database, connect_to_db, disconnect_from_db
 import tempfile
@@ -74,9 +74,18 @@ async def websocket_endpoint(websocket: WebSocket):
                         if os.path.exists(temp_audio_path):
                             os.remove(temp_audio_path)
 
+    except WebSocketDisconnect:
+        print("Client disconnected gracefully.")
+    except RuntimeError as e:
+        if "Cannot call \"receive\"" not in str(e):
+            print(f"WebSocket RuntimeError: {e}")
     except Exception as e:
         print(f"WebSocket error: {e}")
     finally:
-        await websocket.close()
+        try:
+             # Only close if it hasn't been closed already (e.g., by client disconnect)
+             await websocket.close()
+        except RuntimeError:
+             pass
 
 # You can run this file with: uvicorn main:app --reload
