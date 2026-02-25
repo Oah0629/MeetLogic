@@ -45,34 +45,32 @@ async def websocket_endpoint(websocket: WebSocket):
                     await websocket.send_text(f"Message text was: {text}")
                     print(f"Received text: {text}")
             elif "bytes" in data:
-                # 收到音訊資料片段，加入暫存區
+                # 前端現在每 5 秒會傳送一個完整的 WebM 檔案 (Blob) 過來
                 byte_data = data["bytes"]
-                audio_buffer.extend(byte_data)
                 
-                # 當累積一定量的音訊 (例如 100KB 約幾秒鐘的 WebM) 時進行一次辨識
-                if len(audio_buffer) > 50000:
-                    print(f"Processing audio chunk of {len(audio_buffer)} bytes...")
+                # 如果音訊資料太小 (例如小於 5KB，可能只是短短的背景雜音或完全沒講話)，就跳過不處理，節省 CPU 算力
+                if len(byte_data) < 5000:
+                    continue
                     
-                    # 將二進位音訊寫入暫存檔
-                    with tempfile.NamedTemporaryFile(delete=False, suffix=".webm") as temp_audio:
-                        temp_audio.write(audio_buffer)
-                        temp_audio_path = temp_audio.name
-                    
-                    # 清空暫存區，準備接收下一段音訊
-                    audio_buffer = bytearray()
-                    
-                    try:
-                        # 將高耗時的 AI 運算放到背景執行緒，避免阻塞 WebSocket 接收
-                        text = await asyncio.to_thread(transcribe_audio, temp_audio_path)
-                        if text:
-                            print(f"Transcribed: {text}")
-                            await websocket.send_text(text)
-                    except Exception as e:
-                        print(f"Transcription error: {e}")
-                    finally:
-                        # 處理完畢後刪除暫存檔
-                        if os.path.exists(temp_audio_path):
-                            os.remove(temp_audio_path)
+                print(f"Processing complete audio file of {len(byte_data)} bytes...")
+                
+                # 將完整的二進位音訊寫入暫存檔
+                with tempfile.NamedTemporaryFile(delete=False, suffix=".webm") as temp_audio:
+                    temp_audio.write(byte_data)
+                    temp_audio_path = temp_audio.name
+                
+                try:
+                    # 將高耗時的 AI 運算放到背景執行緒，避免阻塞 WebSocket 接收
+                    text = await asyncio.to_thread(transcribe_audio, temp_audio_path)
+                    if text:
+                        print(f"Transcribed: {text}")
+                        await websocket.send_text(text)
+                except Exception as e:
+                    print(f"Transcription error: {e}")
+                finally:
+                    # 處理完畢後刪除暫存檔
+                    if os.path.exists(temp_audio_path):
+                        os.remove(temp_audio_path)
 
     except WebSocketDisconnect:
         print("Client disconnected gracefully.")

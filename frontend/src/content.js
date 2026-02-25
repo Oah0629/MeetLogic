@@ -11,6 +11,7 @@ let mediaStreamSource = null;
 let mediaRecorder = null;
 let websocket = null;
 let intervalId = null;
+let audioIntervalId = null;
 
 const WEBSOCKET_URL = 'ws://localhost:8000/ws'; // Backend WebSocket URL
 
@@ -150,6 +151,10 @@ const toggleTracking = async () => {
     // Stop tracking
     isTracking = false;
     clearInterval(intervalId);
+    if (audioIntervalId) {
+      clearInterval(audioIntervalId);
+      audioIntervalId = null;
+    }
     if (videoElement.srcObject) {
       videoElement.srcObject.getTracks().forEach(track => track.stop());
       videoElement.srcObject = null;
@@ -212,13 +217,34 @@ const toggleTracking = async () => {
           }
         }
         
+        let audioChunks = [];
         mediaRecorder = new MediaRecorder(mediaStreamSource.mediaStream, options);
+        
         mediaRecorder.ondataavailable = (event) => {
-          if (event.data.size > 0 && websocket && websocket.readyState === WebSocket.OPEN) {
-            websocket.send(event.data); // Send audio chunk to backend
+          if (event.data.size > 0) {
+            audioChunks.push(event.data);
           }
         };
-        mediaRecorder.start(1000); // Send audio chunks every 1 second
+
+        mediaRecorder.onstop = () => {
+          if (audioChunks.length > 0 && websocket && websocket.readyState === WebSocket.OPEN) {
+            const audioBlob = new Blob(audioChunks, { type: options.mimeType });
+            websocket.send(audioBlob); // Send COMPLETE audio file
+          }
+          audioChunks = [];
+          if (isTracking && mediaRecorder.state === 'inactive') {
+            try { mediaRecorder.start(); } catch(e) { console.error('Failed to restart recording', e); }
+          }
+        };
+        
+        mediaRecorder.start();
+
+        // Stop recording every 5 seconds to flush a complete file to the backend
+        audioIntervalId = setInterval(() => {
+          if (mediaRecorder && mediaRecorder.state === 'recording') {
+            mediaRecorder.stop();
+          }
+        }, 5000);
       } else {
         console.warn('No audio track found in getDisplayMedia stream.');
       }
