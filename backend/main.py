@@ -1,6 +1,6 @@
 from fastapi import FastAPI, WebSocket
 from contextlib import asynccontextmanager
-from .database import database, connect_to_db, disconnect_from_db
+from database import database, connect_to_db, disconnect_from_db
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
