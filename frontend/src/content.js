@@ -114,8 +114,14 @@ const initWebSocket = () => {
 
 const loadModel = async () => {
   try {
-    await tf.setBackend('webgl'); // try webgl
-    await tf.ready();
+    try {
+      await tf.setBackend('webgl'); // 優先嘗試 WebGL
+      await tf.ready();
+    } catch (webglErr) {
+      console.warn('MeetLogic: WebGL backend failed, attempting to use CPU backend.', webglErr);
+      await tf.setBackend('cpu'); // WebGL 失敗時回退到 CPU
+      await tf.ready();
+    }
     model = await blazeface.load();
     console.log('MeetLogic: BlazeFace model loaded.');
     
