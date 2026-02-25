@@ -19,8 +19,17 @@ async def websocket_endpoint(websocket: WebSocket):
     await websocket.accept()
     try:
         while True:
-            data = await websocket.receive_text()
-            await websocket.send_text(f"Message text was: {data}")
+            data = await websocket.receive()
+            if "text" in data:
+                text = data["text"]
+                await websocket.send_text(f"Message text was: {text}")
+                print(f"Received text: {text}")
+            elif "bytes" in data:
+                # This is audio data from the frontend
+                byte_data = data["bytes"]
+                print(f"Received audio chunk of {len(byte_data)} bytes")
+                # For now, just send an acknowledgement
+                # await websocket.send_text(f"Received audio chunk of {len(byte_data)} bytes")
     except Exception as e:
         print(f"WebSocket error: {e}")
     finally:

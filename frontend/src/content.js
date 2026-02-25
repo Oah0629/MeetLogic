@@ -79,6 +79,15 @@ const initWebSocket = () => {
     if (wsStatusEl) wsStatusEl.innerText = 'Connected';
     // Send a test message
     websocket.send('MeetLogic Frontend Connected!');
+
+    // Check if model is already loaded, then enable button
+    if (model) {
+      const btnEl = document.getElementById('start-tracking-btn');
+      if (btnEl) {
+        btnEl.disabled = false;
+        btnEl.style.opacity = '1';
+      }
+    }
   };
 
   websocket.onmessage = (event) => {
