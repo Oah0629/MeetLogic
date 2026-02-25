@@ -197,14 +197,18 @@ const toggleTracking = async () => {
         mediaStreamSource = audioContext.createMediaStreamSource(new MediaStream([audioTrack]));
 
         // Check if browser supports MediaRecorder audio/webm
-        const options = { mimeType: 'audio/webm' };
+        let options = { mimeType: 'audio/webm;codecs=opus' };
         if (!MediaRecorder.isTypeSupported(options.mimeType)) {
-          console.warn(`${options.mimeType} is not supported, trying another.`);
-          options.mimeType = 'audio/ogg';
+          console.warn(`${options.mimeType} is not supported, trying audio/webm.`);
+          options = { mimeType: 'audio/webm' };
           if (!MediaRecorder.isTypeSupported(options.mimeType)) {
-            console.error('No supported audio mimeType found for MediaRecorder.');
-            alert('Your browser does not support audio recording required for transcription.');
-            throw new Error('No supported audio mimeType.');
+             console.warn(`${options.mimeType} is not supported, trying audio/ogg.`);
+             options = { mimeType: 'audio/ogg' };
+             if (!MediaRecorder.isTypeSupported(options.mimeType)) {
+                console.error('No supported audio mimeType found for MediaRecorder.');
+                alert('Your browser does not support audio recording required for transcription.');
+                throw new Error('No supported audio mimeType.');
+             }
           }
         }
         
