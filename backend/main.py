@@ -6,9 +6,9 @@ import os
 import asyncio
 from faster_whisper import WhisperModel
 
-# 載入 Local Whisper 模型 (MVP 階段使用 tiny 模型以求快速，並預設使用 CPU)
-print("Loading Whisper model (tiny)...")
-whisper_model = WhisperModel("tiny", device="cpu", compute_type="int8")
+# 載入 Local Whisper 模型 (提升為 base 模型以增加準確度，預設使用 CPU)
+print("Loading Whisper model (base)...")
+whisper_model = WhisperModel("base", device="cpu", compute_type="int8")
 print("Whisper model loaded.")
 
 @asynccontextmanager
@@ -24,8 +24,13 @@ async def read_root():
     return {"message": "Welcome to MeetLogic Backend!"}
 
 def transcribe_audio(file_path: str):
-    # 使用 faster-whisper 進行語音辨識
-    segments, info = whisper_model.transcribe(file_path, beam_size=5)
+    # 使用 faster-whisper 進行語音辨識，強制指定中文並加入繁體中文的初始提示以提高準確度
+    segments, info = whisper_model.transcribe(
+        file_path, 
+        beam_size=5, 
+        language="zh", 
+        initial_prompt="以下是一段繁體中文的會議記錄："
+    )
     text = " ".join([segment.text for segment in segments])
     return text.strip()
 
