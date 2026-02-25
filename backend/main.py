@@ -4,9 +4,9 @@ from database import database, connect_to_db, disconnect_from_db
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
-    await connect_to_db()
+    # await connect_to_db()
     yield
-    await disconnect_from_db()
+    # await disconnect_from_db()
 
 app = FastAPI(lifespan=lifespan)
 
