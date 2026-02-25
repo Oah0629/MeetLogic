@@ -50,7 +50,7 @@ async def websocket_endpoint(websocket: WebSocket):
                 audio_buffer.extend(byte_data)
                 
                 # 當累積一定量的音訊 (例如 100KB 約幾秒鐘的 WebM) 時進行一次辨識
-                if len(audio_buffer) > 100000:
+                if len(audio_buffer) > 50000:
                     print(f"Processing audio chunk of {len(audio_buffer)} bytes...")
                     
                     # 將二進位音訊寫入暫存檔
