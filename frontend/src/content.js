@@ -92,10 +92,39 @@ const initWebSocket = () => {
   };
 
   websocket.onmessage = (event) => {
-    console.log('MeetLogic: WebSocket message received:', event.data);
-    const wsTranscriptEl = document.getElementById('ws-transcript');
-    if (wsTranscriptEl) {
-      wsTranscriptEl.innerText = event.data; // For now, just display whatever backend sends
+    try {
+      const data = JSON.parse(event.data);
+      
+      if (data.type === 'mhi_update') {
+        const mhiScore = data.score;
+        const scoreEl = document.getElementById('mhi-score');
+        const container = document.getElementById('meetlogic-container');
+
+        if (scoreEl) {
+          scoreEl.innerText = `${mhiScore}%`;
+          // Visual feedback (Forced Calm mechanism MVP)
+          if (mhiScore < 60) {
+            scoreEl.style.color = '#ea4335'; // Red
+            container.style.borderColor = '#ea4335';
+            container.style.boxShadow = '0 0 15px rgba(234, 67, 53, 0.5)';
+          } else if (mhiScore < 80) {
+            scoreEl.style.color = '#fbbc05'; // Yellow
+            container.style.borderColor = '#fbbc05';
+            container.style.boxShadow = '0 4px 6px rgba(0,0,0,0.1)';
+          } else {
+            scoreEl.style.color = '#34a853'; // Green
+            container.style.borderColor = '#34a853';
+            container.style.boxShadow = '0 4px 6px rgba(0,0,0,0.1)';
+          }
+        }
+      } else if (data.type === 'transcription') {
+        const wsTranscriptEl = document.getElementById('ws-transcript');
+        if (wsTranscriptEl) {
+          wsTranscriptEl.innerText = data.text; 
+        }
+      }
+    } catch (e) {
+      console.log('MeetLogic: WebSocket non-JSON message received:', event.data);
     }
   };
 
@@ -287,25 +316,9 @@ const processFrame = async () => {
     // Ensure score is between 0 and 100
     focusScore = Math.min(100, Math.max(0, focusScore));
 
-    const scoreEl = document.getElementById('mhi-score');
-    const container = document.getElementById('meetlogic-container');
-
-    if (scoreEl) {
-      scoreEl.innerText = `${focusScore}%`;
-      // Visual feedback (Forced Calm mechanism MVP)
-      if (focusScore < 60) {
-        scoreEl.style.color = '#ea4335'; // Red
-        container.style.borderColor = '#ea4335';
-        container.style.boxShadow = '0 0 15px rgba(234, 67, 53, 0.5)';
-      } else if (focusScore < 80) {
-        scoreEl.style.color = '#fbbc05'; // Yellow
-        container.style.borderColor = '#fbbc05';
-        container.style.boxShadow = '0 4px 6px rgba(0,0,0,0.1)';
-      } else {
-        scoreEl.style.color = '#34a853'; // Green
-        container.style.borderColor = '#34a853';
-        container.style.boxShadow = '0 4px 6px rgba(0,0,0,0.1)';
-      }
+    // Send Focus Score to backend
+    if (websocket && websocket.readyState === WebSocket.OPEN) {
+      websocket.send(JSON.stringify({ type: 'focus_score', value: focusScore }));
     }
   } catch (err) {
     console.error('MeetLogic: Face processing error:', err);

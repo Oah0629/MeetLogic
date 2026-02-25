@@ -1,9 +1,10 @@
-from fastapi import FastAPI, WebSocket, WebSocketDisconnect
-from contextlib import asynccontextmanager
-from database import database, connect_to_db, disconnect_from_db
 import tempfile
 import os
 import asyncio
+import json
+from fastapi import FastAPI, WebSocket, WebSocketDisconnect
+from contextlib import asynccontextmanager
+from database import database, connect_to_db, disconnect_from_db
 from faster_whisper import WhisperModel
 
 # 載入 Local Whisper 模型 (提升為 base 模型以增加準確度，預設使用 CPU)
@@ -37,26 +38,49 @@ def transcribe_audio(file_path: str):
 @app.websocket("/ws")
 async def websocket_endpoint(websocket: WebSocket):
     await websocket.accept()
-    audio_buffer = bytearray()
+    
+    # 狀態變數用於計算 MHI
+    current_focus_score = 50
+    has_recent_speech = False
+
     try:
         while True:
             data = await websocket.receive()
             if "text" in data:
                 text = data["text"]
                 if text == 'STOP_AUDIO_STREAM':
-                    audio_buffer = bytearray()
                     print("Audio stream stopped by frontend.")
                 else:
-                    await websocket.send_text(f"Message text was: {text}")
-                    print(f"Received text: {text}")
+                    try:
+                        # 嘗試解析來自前端的 JSON 訊息
+                        json_data = json.loads(text)
+                        if json_data.get('type') == 'focus_score':
+                            current_focus_score = json_data.get('value', 50)
+                            
+                            # --- MHI (Meeting Health Index) 核心演算法 (MVP 版) ---
+                            # MVP 邏輯：MHI 主要是專注力，如果最近有語音活動 (有人講話)，分數加成 10%
+                            speech_bonus = 10 if has_recent_speech else 0
+                            mhi_score = min(100, current_focus_score + speech_bonus)
+                            
+                            # 每一幀 (大約2秒) 都回傳最新的 MHI 給前端更新儀表板
+                            await websocket.send_text(json.dumps({
+                                "type": "mhi_update",
+                                "score": mhi_score
+                            }))
+                    except json.JSONDecodeError:
+                         # 處理純文字測試訊息
+                         print(f"Received text: {text}")
+                         
             elif "bytes" in data:
                 # 前端現在每 5 秒會傳送一個完整的 WebM 檔案 (Blob) 過來
                 byte_data = data["bytes"]
                 
-                # 如果音訊資料太小 (例如小於 5KB，可能只是短短的背景雜音或完全沒講話)，就跳過不處理，節省 CPU 算力
+                # 如果音訊資料太小，跳過不處理
                 if len(byte_data) < 5000:
+                    has_recent_speech = False
                     continue
                     
+                has_recent_speech = True # 標記最近有有效音訊輸入
                 print(f"Processing complete audio file of {len(byte_data)} bytes...")
                 
                 # 將完整的二進位音訊寫入暫存檔
@@ -65,11 +89,15 @@ async def websocket_endpoint(websocket: WebSocket):
                     temp_audio_path = temp_audio.name
                 
                 try:
-                    # 將高耗時的 AI 運算放到背景執行緒，避免阻塞 WebSocket 接收
+                    # 將高耗時的 AI 運算放到背景執行緒
                     text = await asyncio.to_thread(transcribe_audio, temp_audio_path)
                     if text:
                         print(f"Transcribed: {text}")
-                        await websocket.send_text(text)
+                        # 將轉文字結果打包成 JSON 傳回前端
+                        await websocket.send_text(json.dumps({
+                            "type": "transcription",
+                            "text": text
+                        }))
                 except Exception as e:
                     print(f"Transcription error: {e}")
                 finally:
@@ -86,7 +114,6 @@ async def websocket_endpoint(websocket: WebSocket):
         print(f"WebSocket error: {e}")
     finally:
         try:
-             # Only close if it hasn't been closed already (e.g., by client disconnect)
              await websocket.close()
         except RuntimeError:
              pass
