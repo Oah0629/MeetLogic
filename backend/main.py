@@ -1,6 +1,15 @@
 from fastapi import FastAPI, WebSocket
 from contextlib import asynccontextmanager
 from database import database, connect_to_db, disconnect_from_db
+import tempfile
+import os
+import asyncio
+from faster_whisper import WhisperModel
+
+# 載入 Local Whisper 模型 (MVP 階段使用 tiny 模型以求快速，並預設使用 CPU)
+print("Loading Whisper model (tiny)...")
+whisper_model = WhisperModel("tiny", device="cpu", compute_type="int8")
+print("Whisper model loaded.")
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
@@ -14,22 +23,57 @@ app = FastAPI(lifespan=lifespan)
 async def read_root():
     return {"message": "Welcome to MeetLogic Backend!"}
 
+def transcribe_audio(file_path: str):
+    # 使用 faster-whisper 進行語音辨識
+    segments, info = whisper_model.transcribe(file_path, beam_size=5)
+    text = " ".join([segment.text for segment in segments])
+    return text.strip()
+
 @app.websocket("/ws")
 async def websocket_endpoint(websocket: WebSocket):
     await websocket.accept()
+    audio_buffer = bytearray()
     try:
         while True:
             data = await websocket.receive()
             if "text" in data:
                 text = data["text"]
-                await websocket.send_text(f"Message text was: {text}")
-                print(f"Received text: {text}")
+                if text == 'STOP_AUDIO_STREAM':
+                    audio_buffer = bytearray()
+                    print("Audio stream stopped by frontend.")
+                else:
+                    await websocket.send_text(f"Message text was: {text}")
+                    print(f"Received text: {text}")
             elif "bytes" in data:
-                # This is audio data from the frontend
+                # 收到音訊資料片段，加入暫存區
                 byte_data = data["bytes"]
-                print(f"Received audio chunk of {len(byte_data)} bytes")
-                # For now, just send an acknowledgement
-                # await websocket.send_text(f"Received audio chunk of {len(byte_data)} bytes")
+                audio_buffer.extend(byte_data)
+                
+                # 當累積一定量的音訊 (例如 100KB 約幾秒鐘的 WebM) 時進行一次辨識
+                if len(audio_buffer) > 100000:
+                    print(f"Processing audio chunk of {len(audio_buffer)} bytes...")
+                    
+                    # 將二進位音訊寫入暫存檔
+                    with tempfile.NamedTemporaryFile(delete=False, suffix=".webm") as temp_audio:
+                        temp_audio.write(audio_buffer)
+                        temp_audio_path = temp_audio.name
+                    
+                    # 清空暫存區，準備接收下一段音訊
+                    audio_buffer = bytearray()
+                    
+                    try:
+                        # 將高耗時的 AI 運算放到背景執行緒，避免阻塞 WebSocket 接收
+                        text = await asyncio.to_thread(transcribe_audio, temp_audio_path)
+                        if text:
+                            print(f"Transcribed: {text}")
+                            await websocket.send_text(text)
+                    except Exception as e:
+                        print(f"Transcription error: {e}")
+                    finally:
+                        # 處理完畢後刪除暫存檔
+                        if os.path.exists(temp_audio_path):
+                            os.remove(temp_audio_path)
+
     except Exception as e:
         print(f"WebSocket error: {e}")
     finally:
